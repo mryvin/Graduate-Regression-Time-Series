@@ -1,0 +1,587 @@
+---
+title: "MSDS 596 Final Project"
+author: "Group of Sean Heon Park / Kai-en Huang / Meiqiao Shi / Michael Ryvin"
+date: "12/xx/2023"
+output: 
+  html_document:
+    theme: journal
+    toc: yes
+    toc_float:
+      collapsed: true
+---
+
+```{r setup, include=FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(skimr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(ggthemes)
+library(corrplot)
+library(dplyr)
+library(tidyr)
+library(gridExtra)
+library(broom)
+theme_set(theme_fivethirtyeight())
+```
+
+# MSDS 596 Final Project
+
+## Analysis of Student Alcohol Consumption
+
+### Summary of the Data
+
+The data being used comes specifically from Portuguese classes only. 
+
+```{r, echo = FALSE}
+d1 = read.csv("student-por.csv")
+kable(head(d1)[, 1:12], "html") %>%
+  kable_styling(full_width = F)
+```
+```{r, echo = FALSE}
+kable(head(d1)[, 13:23], "html") %>%
+  kable_styling(full_width = F)
+
+kable(head(d1)[, 23:33], "html") %>%
+  kable_styling(full_width = F)
+```
+
+The data contains 33 columns. Their meanings are listed as follows:
+
+- **school**: Student's school (binary: 'GP' - Gabriel Pereira or 'MS' - Mousinho da Silveira)
+- **sex**: Student's sex (binary: 'F' - female or 'M' - male)
+- **age**: Student's age (numeric: from 15 to 22)
+- **address**: Student's home address type (binary: 'U' - urban or 'R' - rural)
+- **famsize**: Family size (binary: 'LE3' - less or equal to 3 or 'GT3' - greater than 3)
+- **Pstatus**: Parent's cohabitation status (binary: 'T' - living together or 'A' - apart)
+- **Medu**: Mother's education (numeric: 0 - none, 1 - primary education (4th grade), 2 – 5th to 9th grade, 3 – secondary education, or 4 – higher education)
+- **Fedu**: Father's education (numeric: 0 - none, 1 - primary education (4th grade), 2 – 5th to 9th grade, 3 – secondary education, or 4 – higher education)
+- **Mjob**: Mother's job (nominal: 'teacher', 'health' care related, civil 'services' (e.g., administrative or police), 'at_home', or 'other')
+- **Fjob**: Father's job (nominal: 'teacher', 'health' care related, civil 'services' (e.g., administrative or police), 'at_home', or 'other')
+- **reason**: Reason to choose this school (nominal: close to 'home', school 'reputation', 'course' preference, or 'other')
+- **guardian**: Student's guardian (nominal: 'mother', 'father' or 'other')
+- **traveltime**: Home to school travel time (numeric: 1 - <15 min., 2 - 15 to 30 min., 3 - 30 min. to 1 hour, or 4 - >1 hour)
+- **studytime**: Weekly study time (numeric: 1 - <2 hours, 2 - 2 to 5 hours, 3 - 5 to 10 hours, or 4 - >10 hours)
+- **failures**: Number of past class failures (numeric: n if 1<=n<3, else 4)
+- **schoolsup**: Extra educational support (binary: yes or no)
+- **famsup**: Family educational support (binary: yes or no)
+- **paid**: Extra paid classes within the course subject (Math or Portuguese) (binary: yes or no)
+- **activities**: Extra-curricular activities (binary: yes or no)
+- **nursery**: Attended nursery school (binary: yes or no)
+- **higher**: Wants to take higher education (binary: yes or no)
+- **internet**: Internet access at home (binary: yes or no)
+- **romantic**: With a romantic relationship (binary: yes or no)
+- **famrel**: Quality of family relationships (numeric: from 1 - very bad to 5 - excellent)
+- **freetime**: Free time after school (numeric: from 1 - very low to 5 - very high)
+- **goout**: Going out with friends (numeric: from 1 - very low to 5 - very high)
+- **Dalc**: Workday alcohol consumption (numeric: from 1 - very low to 5 - very high)
+- **Walc**: Weekend alcohol consumption (numeric: from 1 - very low to 5 - very high)
+- **health**: Current health status (numeric: from 1 - very bad to 5 - very good)
+- **absences**: Number of school absences (numeric: from 0 to 93)
+- **G1**: First period grade (numeric: from 0 to 20)
+- **G2**: Second period grade (numeric: from 0 to 20)
+- **G3**: Final grade (numeric: from 0 to 20, output target)
+
+**Creating a Total Alcohol Consumption Column**
+
+Currently, total alcohol consumption is split into weekday and weekend alcohol consumption. In order to conduct the rest of the analysis on total alcohol consumption, we made a new column combining the two. Since the values were based on a low to high scale and couldnt necessarily be added directly, we combined them by multiplying them by the amount of days they counted for (5 weekdays and 2 weekends).
+
+```{r}
+d1$Talc <- ((5/7) * d1$Dalc) + ((2/7) * d1$Walc)
+d1$Walc <- NULL
+d1$Dalc <- NULL
+```
+
+##### Figure 1
+
+We next wanted to look at the values that each of the variables have. All categorical variables were converted into factors and all numerical variables were converted to numeric values in order to see various statistics about them. Although some numeric values could have been viewed as factors, we chose to view them as numerical as it would be more important to look at averages for these rather than counts of the individual values those variables had. The variable statistics are all listed below:
+
+```{r, echo = FALSE}
+columns_to_factor <- c("school", "sex", "address", "famsize", "Pstatus", 
+                      "Mjob", "Fjob", "reason", "guardian",
+                        "schoolsup",
+                       "famsup", "paid", "activities", "nursery", "internet",
+                       "romantic", "higher")
+
+for (col in columns_to_factor) {
+  d1[[col]] <- as.factor(d1[[col]])
+}
+
+columns_to_numeric <- c("Medu", "Fedu", "traveltime", "studytime", "failures","famrel", "freetime", "goout","health","Talc")
+
+for (col in columns_to_numeric) {
+  d1[[col]] <- as.numeric(as.character(d1[[col]]))
+}
+
+numeric_columns <- sapply(d1, is.numeric)
+factor_columns <- sapply(d1, is.factor)
+
+numeric_subset <- d1[, numeric_columns, drop = FALSE]
+factor_subset <- d1[, factor_columns, drop = FALSE]
+
+skim_numeric <- skim(numeric_subset)
+skim_factor <- skim(factor_subset)
+
+skim_numeric_df <- as.data.frame(skim_numeric)
+skim_factor_df <- as.data.frame(skim_factor)
+
+skim_numeric_df <- skim_numeric_df[, !(names(skim_numeric_df) %in% c("complete_rate", "skim_type"))]
+skim_factor_df <- skim_factor_df[, !(names(skim_factor_df) %in% c("complete_rate", "skim_type", "factor.ordered"))]
+
+kable(skim_factor_df, format = "html") %>%
+  kable_styling(full_width = FALSE, font_size = 12)
+```
+```{r, echo = FALSE}
+kable(skim_numeric_df, format = "html") %>%
+  kable_styling(full_width = FALSE, font_size = 12)
+
+
+```
+
+##### Categorical Data Observations
+
+- **School**: There are two schools represented, with **GP** having 423 entries and **MS** having 226.
+- **Sex**: The dataset includes 383 females (**F**) and 266 males (**M**).
+- **Address**: 452 students have an urban (**U**) address, while 197 have a rural (**R**) address.
+- **Family Size**: Most students come from families with more than 3 members (**GT3**: 457), compared to 192 with 3 or fewer (**LE3**).
+- **Parental Status**: A large majority of students have parents living together (**T**: 569), with only 80 having parents living apart (**A**).
+- **Mother's Job** (`Mjob`): The most common job category for mothers is 'other' (**oth**: 258), followed by 'services' (**ser**: 136), 'at_home' (**at_**: 135), and 'teacher' (**tea**: 72).
+- **Father's Job** (`Fjob`): Similarly, the most common job category for fathers is also 'other' (**oth**: 367), with 'services' (**ser**: 181) being the second most common.
+- **Reason for Choosing School**: The top reason for choosing a school is its course offerings (**cou**: 285), followed by proximity to home (**hom**: 149), reputation (**rep**: 143), and 'other' reasons (**oth**: 72).
+- **Guardian**: The majority of students have their mother as a guardian (**mot**: 455), with fathers (**fat**: 153) and others (**oth**: 41) being less common.
+- **School Support**: Most students do not receive extra educational support at school (**no**: 581), while a minority do (**yes**: 68).
+- **Family Support**: More students receive family support (**yes**: 398) than those who do not (**no**: 251).
+- **Paid Classes**: A vast majority of students do not take paid classes outside of school (**no**: 610), with only 39 doing so (**yes**).
+- **Activities**: The dataset is almost evenly split between students who participate in extra-curricular activities (**yes**: 315) and those who do not (**no**: 334).
+- **Nursery School**: Most students attended nursery school (**yes**: 521), while a smaller number did not (**no**: 128).
+- **Higher Education Aspirations**: Almost all students plan to pursue higher education (**yes**: 580), with a small number indicating otherwise (**no**: 69).
+- **Internet Access**: A majority of students have internet access at home (**yes**: 498), compared to those who do not (**no**: 151).
+- **Romantic Relationships**: More students are not in a romantic relationship (**no**: 410) than those who are (**yes**: 239).
+
+##### Numerical Data Observations
+
+- **Age**: The average age is **16.74** years with a standard deviation of **1.22**. The ages range from **15** to **22** years.
+- **Mother's Education (Medu)**: The mean level of mother's education is **2.51** on a scale of 0 to 4, with a standard deviation of **1.13**.
+- **Father's Education (Fedu)**: The mean level of father's education is **2.31**, also on a scale of 0 to 4, with a standard deviation of **1.10**.
+- **Travel Time**: The average travel time to school is **1.57** on a scale of 1 to 4, with a standard deviation of **0.75**.
+- **Study Time**: Students study for an average of **1.93** hours, with a standard deviation of **0.83**.
+- **Failures**: The average number of past class failures is **0.22**, with a standard deviation of **0.59**.
+- **Family Relationships (famrel)**: The average quality of family relationships is **3.93** on a scale of 1 to 5, with a standard deviation of **0.96**.
+- **Free Time**: Students have an average of **3.18** hours of free time after school, with a standard deviation of **1.05**.
+- **Going Out**: The average going out score is **3.18** on a scale of 1 to 5, with a standard deviation of **1.18**.
+- **Health**: The average health status is **3.54** on a scale of 1 to 5, with a standard deviation of **1.45**.
+- **Absences**: Students have an average of **3.66** absences, with a standard deviation of **4.64**.
+- **First Period Grade (G1)**: The average grade in the first period is **11.40**, with a standard deviation of **2.75**.
+- **Second Period Grade (G2)**: The average grade in the second period is **11.57**, with a standard deviation of **2.91**.
+- **Final Grade (G3)**: The average final grade is **11.91**, with a standard deviation of **3.23**.
+- **Talc**: The average total alcohol consumption rating is **1.72**, with a standard deviation of **0.93**.
+
+
+### Visualizing the Data
+
+##### Figure 2. Histogram of Total Alcohol Consumption
+
+```{r, echo = FALSE}
+ggplot(d1, aes(x = cut(Talc, breaks = c(0, 1, 2, 3, 4, 5)))) +
+  geom_bar(fill = "#F55E61", color = "white") +
+  labs(title = "Total Alcohol Consumption Ratings",
+       x = "Total Alcohol Consumption Ratings",
+       y = "Frequency") +
+  scale_x_discrete(labels = c("(0, 1]", "(1, 2]", "(2, 3]", "(3, 4]", "(4, 5]"))
+```
+
+The histogram above show the distribution of Total Alcohol Consumption ratings put into buckets ranging from 0-1, 1-2, 2-3, 3-4, and 4-5. We can see that the majority of the ratings are concentrated at lower ratings, with few people having alcohol consumption ratings over 4.
+
+##### Figure 3. Boxplot Analysis
+
+Below are the boxplots showing the alcohol consumption scores across every variable. These are used to determine which categorical variables (or numerical variables turned into categorical variables) should be used in the regression model.
+
+```{r, fig.width=12, fig.height=12, echo = FALSE, warning = FALSE}
+totalalc <- as.numeric(d1$Talc)
+
+variables_to_plot <- c("school", "sex", "age", "address", "famsize", 
+                       "Pstatus", "Medu", "Fedu", "Mjob", "Fjob", 
+                       "reason", "guardian", "traveltime", "studytime", 
+                       "failures", "schoolsup", "famsup", "paid", 
+                       "activities", "nursery", "higher", "romantic", 
+                       "famrel", "freetime", "goout", "health", "absences", "G1", "G2", "G3")
+
+d1_long <- d1 %>%
+  gather(key = "variable", value = "value", -Talc)
+
+d1_long <- d1_long %>%
+  filter(variable %in% variables_to_plot)
+
+plot_list <- list()
+
+for (variable in unique(d1_long$variable)) {
+  p <- ggplot(d1_long %>% filter(variable == !!variable), aes(x = value, y = as.numeric(Talc))) +
+    geom_boxplot(aes(fill = variable), outlier.shape = NA) +
+    labs(title = variable, x = NULL, y = "Total Alcohol") +
+    theme(legend.position = "none",
+          plot.title = element_text(size = 10),
+          axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 8),
+          axis.text.y = element_text(size = 8))
+  plot_list[[variable]] <- p
+}
+
+do.call(grid.arrange, c(plot_list, ncol = 5))
+
+```
+
+
+By inspecting the boxplots, we see some variables have more differences between their boxplots than others. However, to get further information, we can try looking at the p-values and R-squared values we get when doing one variable models with total alcohol consumption and treating the independent variables as factors. These values are as follows:
+
+```{r, echo = FALSE}
+results <- data.frame(Variable = character(), P_Value = numeric(), R_Squared = numeric(), stringsAsFactors = TRUE)
+
+for (var in names(d1)) {
+  if (var != "Talc") {
+    formula <- as.formula(paste("Talc ~", paste0("factor(", var, ")")))
+    model <- lm(formula, data = d1)
+    
+    p_value <- summary(model)$coefficients[2,4]
+    r_squared <- summary(model)$r.squared
+    
+    results <- rbind(results, data.frame(Variable = var, P_Value = p_value, R_Squared = r_squared))
+  }
+}
+
+kable(results, format = "html") %>%
+  kable_styling(full_width = FALSE, font_size = 12)
+
+```
+
+##### Figure 4. Correlation Table
+
+Below we will use a correlation table to quickly examine any correlations that Talc may have with other variables.
+
+```{r, echo = FALSE}
+d2 = read.csv("student-por.csv")
+d2$Talc <- ((5/7) * d2$Dalc) + ((2/7) * d2$Walc)
+d2$Walc <- NULL
+d2$Dalc <- NULL
+cord2 = cor(d2[sapply(d2, is.numeric)])
+corrplot(cor(cord2), order="hclust", tl.col="black", tl.cex=.75)
+```
+```{r, echo = FALSE}
+kable(cord2, format = "html") %>%
+  kable_styling(full_width = FALSE, font_size = 10)
+```
+
+Like with the categorical variables, we also found the p-values and R-squared values for each numerical variable model, so that we could also look at the correlations more concretely. 
+
+```{r, echo = FALSE}
+variables_to_include <- c("age", "Medu", "Fedu", "traveltime", "studytime", "failures", "famrel", "freetime", "goout", "health", "absences", "G1", "G2", "G3")
+
+results2 <- data.frame(Variable = character(), P_Value = numeric(), R_Squared = numeric(), 
+                       Log_P_Value = numeric(), Log_R_Squared = numeric(), 
+                       Squared_P_Value = numeric(), Squared_R_Squared = numeric(),
+                       Sqrt_P_Value = numeric(), Sqrt_R_Squared = numeric(),
+                       Inv_P_Value = numeric(), Inv_R_Squared = numeric(),
+                       Cubic_P_Value = numeric(), Cubic_R_Squared = numeric(),
+                       ZScore_P_Value = numeric(), ZScore_R_Squared = numeric(),
+                       stringsAsFactors = FALSE)
+
+for (var in variables_to_include) {
+  d1[[paste0("log_", var)]] <- ifelse(d1[[var]] > 0, log(d1[[var]]), NA) # Log transformation
+  d1[[paste0("squared_", var)]] <- d1[[var]]^2 # Squared transformation
+  d1[[paste0("sqrt_", var)]] <- sqrt(d1[[var]]) # Square root transformation
+  d1[[paste0("inv_", var)]] <- ifelse(d1[[var]] != 0, 1 / d1[[var]], NA) # Inverse transformation
+  d1[[paste0("cubic_", var)]] <- d1[[var]]^3 # Cubic transformation
+  d1[[paste0("zscore_", var)]] <- scale(d1[[var]], center = TRUE, scale = TRUE) # Z-score standardization
+  
+  formula <- as.formula(paste("Talc ~", var))
+  model <- lm(formula, data = d1, na.action = na.exclude)
+  
+  p_value <- summary(model)$coefficients[2,4]
+  r_squared <- summary(model)$r.squared
+  
+  results_row <- data.frame(Variable = var, P_Value = p_value, R_Squared = r_squared)
+  
+  transformations <- c("log", "squared", "sqrt", "inv", "cubic", "zscore")
+  
+  for (trans in transformations) {
+    trans_var <- paste0(trans, "_", var)
+    formula_trans <- as.formula(paste("Talc ~", trans_var))
+    model_trans <- lm(formula_trans, data = d1, na.action = na.exclude)
+    
+    trans_p_value <- summary(model_trans)$coefficients[2,4]
+    trans_r_squared <- summary(model_trans)$r.squared
+    
+    results_row[[paste0(trans, "_P_Value")]] <- trans_p_value
+    results_row[[paste0(trans, "_R_Squared")]] <- trans_r_squared
+  }
+  
+  results2 <- rbind(results2, results_row)
+}
+
+first_half <- results2[, 1:(ncol(results2) %/% 2), drop = FALSE]
+second_half <- results2[, ((ncol(results2) %/% 2) + 1):ncol(results2), drop = FALSE]
+
+kable(first_half, format = "html") %>%
+  kable_styling(full_width = FALSE, font_size = 12) 
+```
+```{r, echo = FALSE}
+kable(second_half, format = "html") %>%
+  kable_styling(full_width = FALSE, font_size = 12) 
+
+```
+
+Above we have the p-values and r-squared for multiple possible transformations of the numerical variables. Below we will print the best versions of each:
+
+```{r, echo = FALSE}
+results3 <- data.frame(
+  Variable = character(),
+  Best_P_Value = numeric(),
+  Best_P_Value_Type = character(),
+  Best_R_Squared = numeric(),
+  Best_R_Squared_Type = character(),
+  stringsAsFactors = FALSE
+)
+
+for (i in 1:nrow(results2)) {
+  row <- results2[i, ]
+  
+  # Minimum p-value
+  p_values <- row[grepl("_P_Value$", names(row))]
+  min_p_value <- as.numeric(min(p_values, na.rm = TRUE))
+  best_p_type <- names(p_values)[which.min(p_values)]
+  best_p_type <- gsub("_P_Value", "", best_p_type)
+  
+  # Maximum R-squared
+  r_squared_values <- row[grepl("_R_Squared$", names(row))]
+  max_r_squared <- as.numeric(max(r_squared_values, na.rm = TRUE))
+  best_r_type <- names(r_squared_values)[which.max(r_squared_values)]
+  best_r_type <- gsub("_R_Squared", "", best_r_type)
+  
+  results3 <- rbind(
+    results3,
+    data.frame(
+      Variable = row$Variable,
+      Best_P_Value = min_p_value,
+      Best_P_Value_Type = best_p_type,
+      Best_R_Squared = max_r_squared,
+      Best_R_Squared_Type = best_r_type
+    )
+  )
+}
+
+kable(results3, format = "html") %>%
+  kable_styling(full_width = FALSE)
+
+```
+
+### Regression
+
+Based on all of the visuals and statistics, we attempted to make a model to predict the total alcohol consumption rating.
+
+##### Figure 5. Regression Summary
+
+**Forward Stepwise Regression Attempt**
+
+```{r, echo = FALSE}
+d3 = read.csv("student-por.csv")
+d3$Talc <- ((5/7) * d3$Dalc) + ((2/7) * d3$Walc)
+
+dependent_variable <- "Talc"
+
+formula <- as.formula(paste(dependent_variable, "~ . -Walc -Dalc -G1 - G2 -G3"))
+
+full_model <- lm(formula, data = d3)
+
+step_model <- olsrr::ols_step_forward_p(full_model, criterion = "adjr2", trace = FALSE)
+
+step_model$model
+
+```
+
+**Hypothetical Best Model**
+
+```{r, echo = FALSE}
+d3 = read.csv("student-por.csv")
+d3$Talc <- ((5/7) * d3$Dalc) + ((2/7) * d3$Walc)
+
+# Alter variables
+d3$age = d3$age^3
+d3$goout = d3$goout^2
+d3$studytime = 1/d3$studytime
+
+lmod3 <- lm(Talc ~ goout + sex + absences + famrel + reason + age + Fjob + Mjob +
+            health + studytime + nursery + address + famsize + Pstatus + guardian + romantic, data = d3)
+
+summary(lmod3)
+
+```
+
+G1, G2, and G3 were excluded from being independent variables as they are other dependent variables (it wouldnt make sense for a final grade to influence drinking during the semester, for example)
+
+In theory, one of the best models available with the data is the model above (Adjusted R-squared of 0.2896). As we can see, the p-value is very low, but so is the adjusted R-squared. This means that although the model is a good predictor, the variability in the data cannot be explained by the model. Unfortunately, another issue here is overfitting. In order to combat this, we will make a new model fit on training data and apply it to testing data. This will make the data more generalizable, but will lower our adjusted R-squared (on the training data) further. 
+
+**Making a model with training data and applying to testing data**
+
+```{r}
+d3 = read.csv("student-por.csv")
+d3$Talc <- ((5/7) * d3$Dalc) + ((2/7) * d3$Walc)
+
+set.seed(123)  
+
+# Training and testing data
+train_indices <- sample(seq_len(nrow(d3)), 0.8 * nrow(d3))  # 80% for training
+test_indices <- setdiff(seq_len(nrow(d3)), train_indices)  # Remaining for testing
+train_data <- d3[train_indices, ]
+test_data <- d3[test_indices, ]
+
+train_data$goout = train_data$goout^2
+train_data$famrel = log(train_data$famrel)
+train_data$age = as.factor(train_data$age)
+
+# Fit the linear model on the training data
+lmod_train <- lm(Talc ~ goout + sex + absences + famrel + reason + age +
+                 health + famsize,
+                 data = train_data)
+
+summary(lmod_train)
+```
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+lmod_train_augmented <- augment(lmod_train)
+
+# Residuals vs Fitted with fivethirtyeight theme
+ggplot(lmod_train_augmented, aes(.fitted, .resid)) +
+  geom_point(col = "#F55E61") +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(x = "Fitted Values", y = "Residuals", title = "Residuals vs Fitted") +
+  theme(axis.title = element_text(size = 12, color = "black"))
+
+# Q-Q Plot of Residuals with fivethirtyeight theme
+ggplot(lmod_train_augmented, aes(sample = .std.resid)) +
+  stat_qq() +
+  stat_qq_line() +
+  labs(x = "Theoretical Quantiles", y = "Standardized Residuals", title = "Q-Q Plot of Residuals") +
+  theme(axis.title = element_text(size = 12, color = "black"))
+
+# Scale-Location with fivethirtyeight theme
+ggplot(lmod_train_augmented, aes(.fitted, sqrt(abs(.std.resid)))) +
+  geom_point(col = "#F55E61") +
+  geom_smooth(se = FALSE) +
+  labs(x = "Fitted Values", y = "Sqrt(|Standardized Residuals|)", title = "Scale-Location") +
+  theme(axis.title = element_text(size = 12, color = "black"))
+
+# Residuals vs Leverage with fivethirtyeight theme
+ggplot(lmod_train_augmented, aes(.hat, .std.resid)) +
+  geom_point(col = "#F55E61") +
+  geom_smooth(se = FALSE) +
+  labs(x = "Leverage", y = "Standardized Residuals", title = "Residuals vs Leverage") +
+  theme(axis.title = element_text(size = 12, color = "black"))
+```
+
+The model and plots above are for the training data. We can see that the Adjusted R-squared has lowered slightly from the highest possible one, but is still close. There are now far fewer variables in order to discourage overfitting. The only remaining variables are goout, sex, absences, famrel, reason, age, health, and famsize.
+
+The plots show that the models are not ideal. None of the typical assumptions of the model can be made confidently here. Linearity could potentially be satisfied, though there is a clear pattern in the fitted values which dissuades us from doing so. Normality cannot be satisfied completely, as the residuals of the model stray far from the model at larger quantiles in the data. Homoscedasticity cant be satisfied completely either, as there are clear patterns in the data seen in the plot. Finally, the residuals vs leverage graph shows how a lot of the data strays from the line, though only a few points exist with very high leverage. Although these issues exist, this is the best that can be done with this dataset. 
+
+```{r, echo = FALSE}
+test_data$goout = test_data$goout^2
+test_data$famrel = log(test_data$famrel)
+test_data$age = as.factor(test_data$age)
+
+predictions_test <- predict(lmod_train, newdata = test_data)
+
+ggplot(test_data, aes(x = Talc, y = predictions_test)) +
+  geom_point(col = "#F55E61", pch = 20) +
+  geom_abline(intercept = 0, slope = 1, col = "black", linetype = 2) +
+  labs(title = "Model Predictions on Testing Data",
+       x = "Actual Values",
+       y = "Predicted Values")+
+  theme(axis.title = element_text(size = 12, color = "black"))
+
+residuals <- test_data$Talc - predictions_test
+rmse <- sqrt(mean(residuals^2))
+
+cat("The root mean square error is:", rmse)
+```
+
+Overall, this is how we can interpret our findings:
+
+- **goout**: The coefficient for `goout` is approximately **0.03229**. This suggests that for each one-unit increase in going out, the total alcohol consumption rating is expected to increase by 0.03229 units, holding all other variables constant. The p-value is very small (4.58e-12), indicating a strong statistical significance. This strong positive relationship still makes sense, as more time spent with friends (going out) is associated with higher alcohol consumption.
+
+- **sexM**: The coefficient for `sexM` is approximately **0.54677**. This indicates that being male is associated with an increase of 0.54677 units in total alcohol consumption rating compared to being female, all else being equal. The p-value remains very small (4.65e-14), suggesting strong statistical significance. This finding is not too surprising, indicating that males tend to consume more alcohol than females.
+
+- **absences**: The coefficient for `absences` is approximately **0.01598**. This means that for each additional absence, the total alcohol consumption rating is expected to increase by 0.01598 units, holding other variables constant. The p-value is 0.036, indicating some statistical significance. This variable is significant, suggesting that the frequency of absences is associated with an increase in alcohol consumption.
+
+- **famrel**: The coefficient for `famrel` is approximately **-0.49617**. This suggests that for each one-unit increase in the quality of family relationships, the total alcohol consumption rating is expected to decrease by 0.49617 units, keeping other variables constant. The p-value is very small (2.90e-06), indicating statistical significance. This result makes sense, indicating that positive family relationships are associated with lower alcohol consumption.
+
+- **reasonhome**, **reasonother**, **reasonreputation**: `reasonhome` has a coefficient of approximately 0.13440, but it is not statistically significant (p-value 0.12628). `reasonother` has a coefficient of approximately 0.32673 and is statistically significant (p-value 0.00476). `reasonreputation` has a coefficient of approximately -0.02182 and is not statistically significant (p-value 0.80624). This suggests that students who choose a reason other than home, reputation, or other specified reasons have higher alcohol consumption.
+
+- **age16, age17, age18, age19, age20, age21, age22**: The coefficients for different age groups indicate how each group's age affects alcohol consumption compared to the reference group (presumably age 15). For example, `age22` has a coefficient of approximately 2.51560, indicating a substantial increase in alcohol consumption for students aged 22 compared to age 15. The p-values for `age22` are very small (0.00148), indicating statistical significance. Other age groups do not show significant associations with alcohol consumption.
+
+- **health**: The coefficient for `health` is approximately **0.05413**. This suggests that for each one-unit increase in `health`, the total alcohol consumption rating is expected to increase by 0.05413 units, keeping other variables constant. The p-value is 0.02868, indicating some statistical significance. This result suggests a positive relationship between health and alcohol consumption, which might be counterintuitive.
+
+- **famsizeLE3**: The coefficient for `famsizeLE3` is approximately **0.16311**. This means that having a family size less than or equal to three is associated with an increase of 0.16311 units in the total alcohol consumption rating compared to a larger family size, all else being equal. The p-value is 0.03048, indicating some statistical significance. This variable suggests that students from smaller families might have slightly higher alcohol consumption.
+
+Overall, these findings all seem to be interesting, and further explorations of data should be done to determine these relationships more conclusively.
+
+### Analyzing the Grades
+
+We also wanted to do a quick analysis on how grades are affected by the total alcohol consumption
+
+##### Figure 6.  Scatterplot Analysis on Grades
+
+```{r, echo = FALSE}
+d3 = read.csv("student-por.csv")
+d3$Talc <- ((5/7) * d3$Dalc) + ((2/7) * d3$Walc)
+
+# G1 vs. Talc
+ggplot(d3, aes(x = Talc, y = G1)) +
+  geom_point(color = "#F55E61", size = 3, alpha = 0.7) +
+  labs(title = "First Period Grade vs. Total Alcohol Consumption Rating",
+       x = "Total Alcohol Consumption Rating",
+       y = "First Period Grade") +
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12, face = "bold"),
+        plot.title = element_text(size = 14, face = "bold"),
+        legend.position = "none")
+
+# G2 vs. Talc
+ggplot(d3, aes(x = Talc, y = G2)) +
+  geom_point(color = "#F55E61", size = 3, alpha = 0.7) +
+  labs(title = "Second Period Grade vs. Total Alcohol Consumption Rating",
+       x = "Total Alcohol Consumption Rating",
+       y = "Second Period Grade") +
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12, face = "bold"),
+        plot.title = element_text(size = 14, face = "bold"),
+        legend.position = "none")
+
+# G3 vs. Talc
+ggplot(d3, aes(x = Talc, y = G3)) +
+  geom_point(color = "#F55E61", size = 3, alpha = 0.7) +
+  labs(title = "Final Grade vs. Total Alcohol Consumption Rating",
+       x = "Total Alcohol Consumption Rating",
+       y = "Final Grade") +
+  theme(axis.text = element_text(size = 10),
+        axis.title = element_text(size = 12, face = "bold"),
+        plot.title = element_text(size = 14, face = "bold"),
+        legend.position = "none")
+
+
+```
+
+It is difficult to make out much of a difference between all three grading points. If any difference exists, the intercept seems to slightly increase from G1 to G2 to G3, and as a result the slope of Talc seems to go slightly more negative from G1 to G2 to G3. In order to check for this, we can make simple linear regressions for all 3.
+
+##### Figure 7. Regression Analysis on Grades
+
+```{r}
+lmod4 <- lm(G1~Talc, data=d3)
+summary(lmod4)
+
+lmod5 <- lm(G2~Talc, data=d3)
+summary(lmod5)
+
+lmod6 <- lm(G3~Talc, data=d3)
+summary(lmod6)
+
+```
+
+As expected, our previous theory of increasing intercepts and decreasing Talc was correct. In all three cases, the p-values of the models are fairly low. Unsurprisingly in all three cases the Adjusted R-squared values are also very low, as evidenced by the variability in the scatterplots.
+
+All in all, this was a fun experiment on regression analysis, and further studies can be done with our findings by looking into more datasets.
